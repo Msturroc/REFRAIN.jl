@@ -1,6 +1,6 @@
 name = "REFRAIN"
 uuid = "937b4309-5ddf-4344-b179-61bf7ccf35e3"
-authors = ["Marc Sturrock <marcsturrock@rcsi.ie>"]
+authors = ["Marc Sturrock <marcsturrock@protonmail.com>"]
 version = "0.1.0"
 
 [deps]
