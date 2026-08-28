@@ -74,6 +74,34 @@ function split_iid(X::AbstractMatrix; frac_fit::Float64=0.5, seed::Int=42)
     return X[:, perm[1:n_fit]], X[:, perm[(n_fit + 1):end]]
 end
 
+"""
+    split_contiguous(X; frac_fit=0.5, buffer=0) -> (D1, D0)
+
+Split the columns of `X` into two CONTIGUOUS stretches, the first
+`frac_fit` of them for fitting and the remainder for testing, discarding
+`buffer` columns between the two.
+
+This is the split to use when the columns are a dependent stationary
+sequence rather than independent draws. `split_iid`'s random permutation
+interleaves the two halves, so `theta_hat` stays dependent on the half it
+is tested against and the guarantee that the pilot is fixed no longer
+holds. Two contiguous stretches separated by a buffer are asymptotically
+independent as the buffer grows under the usual mixing conditions. There
+is no randomness here and so no seed.
+
+Pair it with `bootstrap_calibrate_block`. The split alone is not the
+repair, since the resampling of `D0` also assumes independence.
+"""
+function split_contiguous(X::AbstractMatrix; frac_fit::Float64=0.5,
+                          buffer::Int=0)
+    d, n = size(X)
+    @assert n >= 2 "split_contiguous splits COLUMNS; need n>=2, got size $(size(X))"
+    @assert buffer >= 0 "buffer must be non-negative, got $buffer"
+    n_fit = clamp(round(Int, frac_fit * n), 1, n - 1)
+    lo = min(n_fit + buffer + 1, n)
+    return X[:, 1:n_fit], X[:, lo:n]
+end
+
 # ── Fitting a candidate on the fit half ──────────────────────────
 
 """

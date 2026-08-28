@@ -48,12 +48,13 @@ export sliced_wasserstein, mmd, median_bandwidth, common_bandwidth,
 
 # statistic, calibrations and diagnostics
 export relfit_statistic, permutation_calibrate, bootstrap_calibrate,
+       bootstrap_calibrate_block, block_indices,
        percentile_interval, refit_deviations, refit_bootstrap, width_ratio,
        hoeffding_mmd_test, degeneracy_scaling
 
 # decision layer
 export refrain, refrain_full, decide, RefrainResult,
-       adequacy_screen, adequacy_label, split_iid,
+       adequacy_screen, adequacy_label, split_iid, split_contiguous,
        relfit_distances_K, permutation_calibrate_K, bootstrap_calibrate_K,
        permutation_set_K, relfit_compare_K
 

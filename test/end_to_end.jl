@@ -137,3 +137,19 @@ end
     @test length(r.perm_set) >= 1
     @test length(r.theta_hat) == 5
 end
+
+@testset "the split mode reaches the split" begin
+    #= `split_mode` must actually reach the split. It was added to the
+       three entry points' signatures and to their bodies in separate
+       edits, and for a while the first landed without the second, so the
+       keyword was accepted and silently ignored. A test that only calls
+       `split_contiguous` directly would not have caught that. =#
+    Xs = reshape(collect(1.0:400.0), 1, 400)
+    md0 = make_gaussian_fixed_loc(-1.0); md1 = make_gaussian_fixed_loc(+1.0)
+    kwq = (N = 200, max_sims = 4_000, paccmin = 1e-2)
+    ri = refrain_full(Xs, md0, md1; kwq...)
+    rc = refrain_full(Xs, md0, md1; kwq..., split_mode = :contiguous, split_buffer = 5)
+    @test ri.D0 != rc.D0
+    @test vec(rc.D0) == collect(206.0:400.0)
+    @test_throws ErrorException refrain(Xs, md0, md1; kwq..., split_mode = :nonsense)
+end

@@ -239,6 +239,86 @@ function bootstrap_calibrate(D0::AbstractMatrix, P0::AbstractMatrix, P1::Abstrac
 end
 
 """
+    block_indices(rng, n, m, block) -> Vector{Int}
+
+`m` column indices drawn as circular blocks of length `block` from `1:n`,
+the moving-block resampling of Kunsch (1989) in its circular form.
+
+At `block == 1` this is a single `rand(rng, 1:n, m)` call, so it is
+identical to an independent resample in the values it returns AND in the
+RNG state it leaves behind. That is what lets `bootstrap_calibrate_block`
+reproduce `bootstrap_calibrate` bit for bit at `block = 1` rather than
+merely in distribution, which is the only cheap guard against the block
+path becoming a second, subtly different implementation.
+"""
+function block_indices(rng::AbstractRNG, n::Int, m::Int, block::Int)
+    @assert block >= 1 "block length must be at least 1, got $block"
+    block == 1 && return rand(rng, 1:n, m)
+    k = cld(m, block)
+    starts = rand(rng, 1:n, k)
+    idx = Vector{Int}(undef, k * block)
+    @inbounds for b in 1:k, j in 0:(block - 1)
+        idx[(b - 1) * block + j + 1] = mod1(starts[b] + j, n)
+    end
+    return resize!(idx, m)
+end
+
+"""
+    bootstrap_calibrate_block(D0, P0, P1; block=1, n_boot=299, ipm=:sw, ...)
+
+`bootstrap_calibrate` with the columns of `D0` resampled in contiguous
+blocks of length `block` rather than singly, which is what the
+three-sample bootstrap needs when the observed units are a dependent
+stationary sequence.
+
+An independent resample of the columns estimates the variance of `T`
+under an independent marginal, which recovers only the leading term of
+the long-run variance. Under positive serial dependence the interval is
+then too narrow and the rule commits more often than its level allows.
+Measured on a Gaussian AR(1) at a genuine tie, the single-column resample
+rejects in 0.43 of replications at `phi = 0.8` with an interval 2.6 times
+too narrow, and blocks of twenty return that to 0.12 at 1.24.
+
+ONLY `D0` IS BLOCKED. `P0` and `P1` come from independent calls to each
+fitted simulator, so their columns are independent whatever the data do,
+and blocking them would widen the interval for no reason.
+
+The block length is a choice with a cost on both sides. Too short leaves
+the dependence uncorrected, and too long widens the interval even when
+there is no dependence to correct: on the same AR(1) at `phi = 0`, the
+interval grows from 1.03 to 1.12 times the truth as `block` goes 1 to 40.
+Pair this with `split_contiguous`.
+"""
+function bootstrap_calibrate_block(D0::AbstractMatrix, P0::AbstractMatrix,
+                                   P1::AbstractMatrix;
+                                   block::Int=1, n_boot::Int=299,
+                                   ipm::Symbol=:sw, transform::Symbol=:none,
+                                   seed::Int=42, sw_seed::Int=42,
+                                   n_projections::Int=SW_NPROJ)
+    D0t = _apply_transform(D0, transform)
+    P0t = _apply_transform(P0, transform)
+    P1t = _apply_transform(P1, transform)
+    bw = common_bandwidth(ipm, D0t, P0t, P1t)
+    sc = ipm === :sw ? sw_scratch(size(D0t, 1), sw_seed; n_projections=n_projections) : nothing
+    T(D, A, B) = (rho = rho_against_fixed(ipm, D; bandwidth=bw, sw_seed=sw_seed,
+                                          scratch=sc, n_projections=n_projections);
+                  rho(A) - rho(B))
+    T_obs = T(D0t, P0t, P1t)
+    n_d = size(D0t, 2); n_0 = size(P0t, 2); n_1 = size(P1t, 2)
+    rng = MersenneTwister(seed)
+    T_boot = zeros(n_boot)
+    for b in 1:n_boot
+        Db  = D0t[:, block_indices(rng, n_d, n_d, block)]
+        Pb0 = P0t[:, rand(rng, 1:n_0, n_0)]
+        Pb1 = P1t[:, rand(rng, 1:n_1, n_1)]
+        T_boot[b] = T(Db, Pb0, Pb1)
+    end
+    n_le = count(<=(0.0), T_boot); n_ge = count(>=(0.0), T_boot)
+    p = min(1.0, 2 * (1 + min(n_le, n_ge)) / (1 + n_boot))
+    return (T_obs=T_obs, p=p, T_boot=T_boot)
+end
+
+"""
     percentile_interval(T_boot; alpha=0.05) -> (lo, hi)
 
 The equal-tailed percentile interval whose exclusion of zero is exactly

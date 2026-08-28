@@ -397,3 +397,54 @@ end
     Md = reshape(randn(MersenneTwister(54), 3 * n), 3, n)
     @test relfit_statistic(Md, M0, M1; ipm=:sw, transform=:rank) != 0.0
 end
+
+@testset "block resampling and the contiguous split" begin
+    #= THE REDUCTION DEMAND, the same one sanity_k.jl makes of the
+       K-candidate code: the block path at block = 1 must reproduce the
+       published rule BIT FOR BIT, not merely in distribution. It is the
+       only cheap guard against `bootstrap_calibrate_block` drifting into
+       a second, subtly different implementation of the statistic the
+       paper reports. `block_indices` therefore consumes the RNG in the
+       same order and the same amounts as the plain resample. =#
+    rng = MersenneTwister(71)
+    n = 150
+    D0 = reshape(randn(rng, n), 1, n)
+    P0 = reshape(0.4 .+ randn(rng, n), 1, n)
+    P1 = reshape(-0.4 .+ randn(rng, n), 1, n)
+    for ipm in (:sw, :mmd)
+        a = bootstrap_calibrate(D0, P0, P1; ipm=ipm, seed=13, n_boot=99)
+        b = bootstrap_calibrate_block(D0, P0, P1; block=1, ipm=ipm, seed=13, n_boot=99)
+        @test a.T_obs == b.T_obs
+        @test a.p == b.p
+        @test a.T_boot == b.T_boot
+    end
+    # and block = 1 leaves the RNG where an independent resample would
+    r1 = MersenneTwister(5); r2 = MersenneTwister(5)
+    @test block_indices(r1, n, n, 1) == rand(r2, 1:n, n)
+    @test rand(r1) == rand(r2)
+
+    # Blocks are contiguous and wrap, so every index is in range and a
+    # block of length n is a single rotation of the whole sample.
+    idx = block_indices(MersenneTwister(9), n, n, 10)
+    @test length(idx) == n && all(1 .<= idx .<= n)
+    @test all(idx[i + 1] == mod1(idx[i] + 1, n) for i in 1:9)
+    @test sort(block_indices(MersenneTwister(9), n, n, n)) == collect(1:n)
+
+    # A wider interval is the whole point, so on a positively dependent
+    # sequence blocking must not shrink it.
+    z = Vector{Float64}(undef, n); e = randn(MersenneTwister(77), n)
+    z[1] = e[1]
+    for t in 2:n; z[t] = 0.8 * z[t - 1] + sqrt(1 - 0.8^2) * e[t]; end
+    Dd = reshape(z, 1, n)
+    w1 = std(bootstrap_calibrate_block(Dd, P0, P1; block=1,  ipm=:sw, seed=3).T_boot)
+    w2 = std(bootstrap_calibrate_block(Dd, P0, P1; block=15, ipm=:sw, seed=3).T_boot)
+    @test w2 > w1
+
+    # The contiguous split takes stretches, not a permutation, and the
+    # buffer is discarded from the middle.
+    X = reshape(collect(1.0:100.0), 1, 100)
+    D1, D0c = split_contiguous(X; frac_fit=0.5, buffer=4)
+    @test vec(D1) == collect(1.0:50.0)
+    @test vec(D0c) == collect(55.0:100.0)
+    @test size(split_contiguous(X)[1], 2) + size(split_contiguous(X)[2], 2) == 100
+end

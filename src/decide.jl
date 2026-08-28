@@ -256,11 +256,20 @@ function refrain(X::AbstractMatrix, model0::RelFitModel, model1::RelFitModel;
                  n_projections::Int=SW_NPROJ,
                  screen::Bool=true, screen_rep::Int=299,
                  refit_S::Int=5, refit_N::Int=800,
+                 split_mode::Symbol=:iid, split_buffer::Int=0,
                  verbose::Bool=false)
     calibration in (:bootstrap, :permutation, :refit) ||
         error("unknown calibration $calibration (use :bootstrap, :permutation or :refit)")
 
-    D1, D0 = split_iid(X; frac_fit=frac_fit, seed=split_seed)
+    #= `:iid` is the published path and the default. `:contiguous` is the
+       split to use when the columns are a dependent stationary sequence,
+       where a random permutation would leave D1 and D0 dependent on one
+       another. Pair it with `bootstrap_calibrate_block`. =#
+    D1, D0 = split_mode === :iid ?
+        split_iid(X; frac_fit=frac_fit, seed=split_seed) :
+        split_mode === :contiguous ?
+        split_contiguous(X; frac_fit=frac_fit, buffer=split_buffer) :
+        error("split_mode must be :iid or :contiguous, got $split_mode")
     n_sim = n_mult * size(D0, 2)
     fitkw = (; sampler=sampler, N=N, kernel=kernel, paccmin=paccmin,
                max_sims=max_sims, verbose=verbose)
@@ -349,8 +358,17 @@ function refrain_full(X::AbstractMatrix, model0::RelFitModel, model1::RelFitMode
                       n_perm::Int=500, perm_seed::Int=99, sw_seed::Int=42,
                       n_projections::Int=SW_NPROJ,
                       screen::Bool=false, screen_rep::Int=299, alpha::Float64=0.05,
+                      split_mode::Symbol=:iid, split_buffer::Int=0,
                       verbose::Bool=false)
-    D1, D0 = split_iid(X; frac_fit=frac_fit, seed=split_seed)
+    #= `:iid` is the published path and the default. `:contiguous` is the
+       split to use when the columns are a dependent stationary sequence,
+       where a random permutation would leave D1 and D0 dependent on one
+       another. Pair it with `bootstrap_calibrate_block`. =#
+    D1, D0 = split_mode === :iid ?
+        split_iid(X; frac_fit=frac_fit, seed=split_seed) :
+        split_mode === :contiguous ?
+        split_contiguous(X; frac_fit=frac_fit, buffer=split_buffer) :
+        error("split_mode must be :iid or :contiguous, got $split_mode")
     n_sim = n_mult * size(D0, 2)
     p1_offset = 1_000_000
     fitkw = (; sampler=sampler, N=N, kernel=kernel, paccmin=paccmin,
@@ -707,9 +725,18 @@ function relfit_compare_K(X::AbstractMatrix, models::AbstractVector{RelFitModel}
                           n_perm::Int=299, n_boot::Int=299, perm_seed::Int=99,
                           boot_seed::Int=199, sw_seed::Int=42, alpha::Float64=0.05,
                           n_projections::Int=SW_NPROJ,
+                          split_mode::Symbol=:iid, split_buffer::Int=0,
                           screen::Bool=false, screen_rep::Int=299, verbose::Bool=false)
     K = length(models)
-    D1, D0 = split_iid(X; frac_fit=frac_fit, seed=split_seed)
+    #= `:iid` is the published path and the default. `:contiguous` is the
+       split to use when the columns are a dependent stationary sequence,
+       where a random permutation would leave D1 and D0 dependent on one
+       another. Pair it with `bootstrap_calibrate_block`. =#
+    D1, D0 = split_mode === :iid ?
+        split_iid(X; frac_fit=frac_fit, seed=split_seed) :
+        split_mode === :contiguous ?
+        split_contiguous(X; frac_fit=frac_fit, buffer=split_buffer) :
+        error("split_mode must be :iid or :contiguous, got $split_mode")
     n_sim = size(D0, 2)
     # One stream per candidate, separated by the same 10^6 offset that
     # keeps replications apart at K = 2, so no two candidates and no two

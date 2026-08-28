@@ -38,6 +38,8 @@ Abstaining means the data cannot resolve which candidate is closer, not that nei
 
 The plug-in bootstrap holds the fit still, so its interval is too narrow once many parameters are fitted. Measured width ratios are 0.97 to 1.06 at one fitted parameter per candidate and 0.83 to 1.15 at two, both correct, against 1.16 to 1.46 at five, where it rejects at about twice its nominal rate. Raising `n` does not help, since both terms scale as `n^{-1/2}`. Use `calibration = :refit` there, which refits both candidates on each resampled `D1` and restores the level.
 
+The units are columns, and a column may be as internally dependent as the problem needs: what is assumed is independence *between* columns. That assumption is used in exactly two places, the split and the resample of `D0`, and in neither the estimand nor the permutation's exactness. If your columns are a dependent stationary sequence, split with `split_contiguous` and calibrate with `bootstrap_calibrate_block`, which resamples `D0` in blocks and leaves `P0` and `P1` alone since those are independent simulator draws. On a Gaussian AR(1) at a genuine tie the single-column resample rejects in 0.43 of replications at `phi = 0.8` with an interval 2.6 times too narrow, and blocks of twenty return that to 0.12 at 1.24. The block length costs something either way, so blocking when there is no dependence widens the interval from 1.03 to 1.12 times the truth as `block` goes 1 to 40. A single unreplicated realisation, one epidemic curve or one phylogeny, has nothing to split and is outside the method.
+
 ## Which calibration
 
 | calibration | null it controls | when to use it |
@@ -45,6 +47,7 @@ The plug-in bootstrap holds the fit still, so its interval is too narrow once ma
 | `:bootstrap` | equidistance, large sample | few parameters fitted |
 | `:refit` | the same, with fit uncertainty propagated | many parameters fitted |
 | `:permutation` | exchangeability of the pooled draws, exact in finite samples | only where the two fitted predictives nearly coincide |
+| `bootstrap_calibrate_block` | equidistance, with the columns of `D0` blocked | units are a dependent stationary sequence |
 
 The permutation is exact only where the predictives coincide, which is the regime in which there is nothing to decide. Away from it it over-rejects, measured at 0.140 and 0.349 where they are close and 0.365 and 0.658 where they are two units apart. `hoeffding_mmd_test` is Park et al.'s concentration threshold, kept as a cross-check because it fails in the complementary regime. `degeneracy_scaling` returns an exponent that warns when the bootstrap's asymptotic hypothesis has lapsed, though it does not order the level failures.
 
